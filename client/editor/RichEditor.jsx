@@ -9,6 +9,7 @@ import { fromJS } from 'immutable';
 import {
   EditorState,
   RichUtils,
+  KeyBindingUtil,
   getDefaultKeyBinding,
   convertToRaw,
   convertFromRaw,
@@ -76,26 +77,31 @@ class RichEditor extends React.Component {
     this.handleTab = this.handleTab.bind(this);
     this.toggleBlockType = this.toggleBlockType.bind(this);
     this.toggleInlineStyle = this.toggleInlineStyle.bind(this);
-    // this.toggleEdit = this.toggleEdit.bind(this);
-    this.logState = () => {console.log(convertToRaw(this.state.editorState.getCurrentContent()), ' entitymap');
-                           console.log(this.state.editorState.toJS());
-                           console.log(this.state.editorState.getSelection());
-                           console.log(this.state.suggestions);
-                          }
     this.updateSelection = this.updateSelection.bind(this);
     this.blockRendererFn = blockRendererFn(this.onChange, this.getEditorState);
     this.save = this.save.bind(this);
   }
 
+  componentDidMount() {
+    this.pageWrapperEl = $('.pageWrapper');
+  }
+
   componentWillReceiveProps(props) {
     const { editorState } = this.state;
 
+    clearInterval(this.saveInterval);
     if (props.user.id === props.note.userId) {
       this.setState({
         editEnabled: true,
       });
       this.saveInterval = setInterval(this.save, 3000);
       setTimeout(this.updateSelection, 100);
+    } else {
+      this.setState({
+        editEnabled: false,
+      });
+      clearInterval(this.saveInterval);
+      this.saveInterval = undefined;
     }
 
     if (props.note.shares && props.note.content) {
@@ -122,11 +128,13 @@ class RichEditor extends React.Component {
         suggestions: mentions,
       });
     }
-
   }
 
   componentWillUnmount() {
     clearInterval(this.saveInterval);
+    this.setState({
+      editEnabled: false,
+    });
   }
 
   focus() {
@@ -161,10 +169,12 @@ class RichEditor extends React.Component {
       const { id, name } = this.props.note;
       const contentState = editorState.getCurrentContent();
       const blockMap = contentState.getBlockMap();
-      const users = blockMap.reduce(this.findMentionEntities, []);
       const content = convertToRaw(editorState.getCurrentContent());
-      
-      this.props.commentActions.postMention(id, users);
+      const users = blockMap.reduce(this.findMentionEntities, []);
+
+      if (users && users.length) {
+        this.props.commentActions.postMention(id, users);
+      }
       this.props.noteActions.saveNote(id, name, content);
       window.localStorage['editor' + id] = JSON.stringify(content);
     }
@@ -188,27 +198,20 @@ class RichEditor extends React.Component {
     );
   }
 
-  toggleEdit(e) {
-    this.setState({
-      editEnabled: !this.state.editEnabled,
-    });
-  }
-
   keyBindingFn(e) {
-    if (e.ctrlKey) {
-      if (e.keyCode === 83) {
-        return 'editor-save';
-      }
-      if (e.altKey) {
-        if (e.keyCode === 67) {
-          return 'compile';
-        }
-      }
-      if (e.keyCode === 53) {
+    if (KeyBindingUtil.hasCommandModifier(e)) {
+      if (e.keyCode === 53) { // key '5'
         return 'toggleinline:STRIKETHROUGH';
       }
-      if (e.keyCode === 72) {
+      if (e.keyCode === 72) { // key 'h'
         return 'toggleinline:HIGHLIGHT';
+      }
+      if (e.keyCode === 83) { // key 's'
+        return 'editor-save';
+      }
+    } else if (e.ctrlKey && e.altKey) {
+      if (e.keyCode === 67) { // key 'c'
+        return 'compile';
       }
     }
     return getDefaultKeyBinding(e);
@@ -297,8 +300,6 @@ class RichEditor extends React.Component {
       const answer = $(document.getSelection().focusNode).closest('.public-DraftStyleDefault-pre').text();
       const lang = document.getElementById('language').value;
 
-      console.log(lang);
-
       compiler(answer, lang)
       .then(res => res.json())
       .then(data => {
@@ -312,7 +313,6 @@ class RichEditor extends React.Component {
         const $answer = $('.compileAnswer');
 
         $answer.append($p);
-        console.log($p.position(), $p.height(), $p.offset());
         $answer.animate({ scrollTop: $p.position().top + $p.height() }, 250);
       })
       .catch(err => {
@@ -343,7 +343,6 @@ class RichEditor extends React.Component {
     if (command.indexOf('toggleinline:') === 0) {
       const inline = command.split(':')[1];
       this.toggleInlineStyle(inline);
-      console.log('toggle');
       return true;
     }
 
@@ -367,7 +366,6 @@ class RichEditor extends React.Component {
       this.onChange(addBlock(editorState));
       return;
     }
-    return;
   }
 
   insertPageBreak() {
@@ -396,8 +394,7 @@ class RichEditor extends React.Component {
         if (!editorBounds) { return; }
 
         const contentState = editorState.getCurrentContent();
-
-        sideControlTop = (blockBounds.top - editorBounds.top + window.pageYOffset) 
+        sideControlTop = (blockBounds.top - editorBounds.top + this.pageWrapperEl.scrollTop())
           + ((blockBounds.bottom - blockBounds.top) / 2) - 15;
       }
     }
@@ -410,6 +407,7 @@ class RichEditor extends React.Component {
   }
 
   render() {
+    const { notePending } = this.props;
     const { editorState, sideControlVisible, editEnabled, sideControlTop, sideControlLeft } = this.state;
 
     let className = 'RichEditor-editor';
@@ -423,14 +421,21 @@ class RichEditor extends React.Component {
     const selectedBlockType = RichUtils.getCurrentBlockType(editorState);
 
     let sideControlStyles = Object.assign({}, styles.sideControl);
-    if ( sideControlVisible && editEnabled ) {
+    if (sideControlVisible && editEnabled) {
       sideControlStyles.display = 'block';
       sideControlStyles.top = sideControlTop;
       sideControlStyles.left = sideControlLeft;
     }
 
+    const readOnlyBanner = !notePending && !editEnabled ?
+      (<div className="readOnlyBanner">
+        <i className="material-icons">visibility</i>
+        <span>Read-Only</span>
+      </div>) : undefined;
+
     return (
       <div className="RichEditor-root" onClick={this.focus}>
+        {readOnlyBanner}
         <Outline
           editorState={editorState}
         />
@@ -465,12 +470,6 @@ class RichEditor extends React.Component {
           onSearchChange={this.onSearchChange}
           suggestions={this.state.suggestions}
         />
-        {/*<button onClick={this.toggleEdit}>Toggle Edit</button>
-        <input
-          onClick={this.logState}
-          type="button"
-          value="Log State"
-        />*/}
       </div>
     );
   }

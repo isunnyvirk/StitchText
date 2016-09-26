@@ -22,6 +22,19 @@ export function receiveSingleNote(note) {
   };
 }
 
+export function failureSingleNote(message) {
+  return {
+    type: 'GET_SINGLE_NOTE_FAILURE',
+    message,
+  };
+}
+
+export function pendingSingleNote() {
+  return {
+    type: 'GET_SINGLE_NOTE_PENDING',
+  };
+}
+
 export function receiveNotesInFolder(notes) {
   return {
     type: 'GET_ALL_NOTES_IN_FOLDER',
@@ -51,11 +64,9 @@ export function getOneNote(noteId) {
   const token = localStorage.getItem('jwtToken');
 
   return (dispatch) => {
+    dispatch(pendingSingleNote());
     return fetch(`/api/notes/${noteId}`, {
       method: 'GET',
-      body: {
-        params: JSON.stringify(noteId),
-      },
       headers: {
         'Content-Type': 'application/json',
         Authorization: `JWT ${token}`,
@@ -66,7 +77,7 @@ export function getOneNote(noteId) {
       dispatch(receiveSingleNote(data));
       dispatch(getOneFolder(data.folder || {}));
     })
-    .catch(err => dispatch(notesFailure(err)));
+    .catch(err => dispatch(failureSingleNote(err)));
   };
 }
 
@@ -76,9 +87,6 @@ export function getNotesInFolder(folderId) {
   return (dispatch) => {
     return fetch(`/api/notes?folderId=${folderId}`, {
       method: 'GET',
-      body: {
-        params: JSON.stringify(folderId),
-      },
       headers: {
         'Content-Type': 'application/json',
         Authorization: `JWT ${token}`,
