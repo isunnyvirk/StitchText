@@ -56,3 +56,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 ##### Public End Points
 |Request|URL|Response|
 |---|---|---|
+|Login|/auth/google||
+|Logout|/logout| |
+|Get folders| /api/folders | foldersObj |
+|Get single folder | /api/folders/:folderId | folderObj |
+|Get notes | /api/notes | notesObj|
+|Get single note | /api/notes/:noteId | noteObj |
+|Share API folder | /api/folders/:folderId/share | |
+|Share API notes | /api/notes/:noteId/share | |
+|User search | /api/users/search | |
+|Notifications | /api/notifications | notificationObj |
